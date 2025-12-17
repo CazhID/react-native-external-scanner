@@ -27,14 +27,27 @@ cd ios && pod install
 
 ### Android
 
-For Android, you need to intercept key events in your MainActivity. Add the following to your `MainActivity.kt`:
+For Android, you need to:
+
+1. **Initialize the scanner** in your `MainActivity.kt` or `MainApplication.kt`
+2. **Intercept key events** to capture scanner input
+
+Add the following to your `MainActivity.kt`:
 
 ```kotlin
+import android.os.Bundle
 import android.view.KeyEvent
 import com.margelo.nitro.externalscanner.ExternalScannerUtil
+import com.margelo.nitro.externalscanner.NitroExternalScannerPackage
 
 class MainActivity : ReactActivity() {
     // ... existing code ...
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Initialize scanner detection early
+        NitroExternalScannerPackage.initialize(this)
+    }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Let external scanner handle the event first
@@ -44,6 +57,11 @@ class MainActivity : ReactActivity() {
         return super.dispatchKeyEvent(event)
     }
 }
+```
+
+**Tip:** To debug connected devices, check logcat for `ExternalScanner` tag:
+```bash
+adb logcat -s ExternalScanner
 ```
 
 ## Usage

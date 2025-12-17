@@ -2,6 +2,7 @@ package com.margelo.nitro.externalscanner
 
 import android.content.Context
 import android.hardware.input.InputManager
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
@@ -10,18 +11,37 @@ import android.view.KeyEvent
  * Utility class for detecting and working with external scanner devices
  */
 object ExternalScannerUtil {
+    private const val TAG = "ExternalScanner"
+
     private var inputManager: InputManager? = null
     private var isIntercepting = false
     private var deviceListener: InputManager.InputDeviceListener? = null
+    private var isInitialized = false
 
     /**
      * Initialize the utility with application context
      */
     @JvmStatic
     fun init(context: Context) {
+        if (isInitialized) {
+            Log.d(TAG, "Already initialized")
+            return
+        }
+        Log.d(TAG, "Initializing ExternalScannerUtil")
         inputManager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
         setupDeviceListener()
+
+        // Log all devices for debugging
+        logAllDevices()
+
         syncDevices()
+        isInitialized = true
+
+        val devices = getConnectedDevices()
+        Log.d(TAG, "Initialization complete. Found ${devices.size} external devices")
+        devices.forEach { device ->
+            Log.d(TAG, "  - ${device.name} (id=${device.id})")
+        }
     }
 
     /**
@@ -30,7 +50,32 @@ object ExternalScannerUtil {
     @JvmStatic
     fun hasExternalScanner(): Boolean {
         val deviceIds = inputManager?.inputDeviceIds ?: InputDevice.getDeviceIds()
-        return deviceIds.any { isExternalScanner(it) }
+        val hasScanner = deviceIds.any { isExternalScanner(it) }
+        Log.d(TAG, "hasExternalScanner: $hasScanner (checked ${deviceIds.size} devices)")
+        return hasScanner
+    }
+
+    /**
+     * Debug: List all input devices
+     */
+    @JvmStatic
+    fun logAllDevices() {
+        val deviceIds = inputManager?.inputDeviceIds ?: InputDevice.getDeviceIds()
+        Log.d(TAG, "=== All Input Devices (${deviceIds.size}) ===")
+        for (deviceId in deviceIds) {
+            val device = InputDevice.getDevice(deviceId) ?: continue
+            val sources = device.sources
+            val hasKeyboard = (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+            val keyCharMap = device.keyCharacterMap
+            Log.d(TAG, "Device[$deviceId]: ${device.name}")
+            Log.d(TAG, "  - isVirtual: ${device.isVirtual}")
+            Log.d(TAG, "  - hasKeyboard: $hasKeyboard")
+            Log.d(TAG, "  - keyboardType: ${device.keyboardType}")
+            Log.d(TAG, "  - keyCharMapType: ${keyCharMap.keyboardType}")
+            Log.d(TAG, "  - vendorId: ${device.vendorId}, productId: ${device.productId}")
+            Log.d(TAG, "  - isExternalScanner: ${isExternalScannerDevice(device)}")
+        }
+        Log.d(TAG, "=== End Device List ===")
     }
 
     /**
@@ -149,6 +194,7 @@ object ExternalScannerUtil {
 
     /**
      * Check if an InputDevice is an external scanner
+     * Note: Most barcode scanners appear as USB HID keyboards
      */
     private fun isExternalScannerDevice(device: InputDevice): Boolean {
         // Virtual devices are not external scanners
@@ -158,15 +204,7 @@ object ExternalScannerUtil {
         val sources = device.sources
         val hasKeyboard = (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
 
-        if (!hasKeyboard) return false
-
-        // Check for valid key character map (excludes system keyboards)
-        val keyCharMap = device.keyCharacterMap
-        if (keyCharMap.keyboardType == KeyCharacterMap.VIRTUAL_KEYBOARD) {
-            return false
-        }
-
-        // Additional heuristic: check device name for common scanner identifiers
+        // Check device name for common scanner identifiers
         val nameLower = device.name.lowercase()
         val isLikelyScanner = nameLower.contains("scanner") ||
                 nameLower.contains("barcode") ||
@@ -175,15 +213,36 @@ object ExternalScannerUtil {
                 nameLower.contains("symbol") ||
                 nameLower.contains("honeywell") ||
                 nameLower.contains("zebra") ||
-                nameLower.contains("datalogic")
+                nameLower.contains("datalogic") ||
+                nameLower.contains("newland") ||
+                nameLower.contains("opticon") ||
+                nameLower.contains("motorola") ||
+                nameLower.contains("usb") // Many scanners show as generic USB device
 
-        // If it's an external keyboard-like device, treat it as a potential scanner
-        // Scanners typically appear as HID keyboard devices
-        val isExternalKeyboard = device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE &&
-                !device.isVirtual &&
-                keyCharMap.keyboardType != KeyCharacterMap.VIRTUAL_KEYBOARD
+        // If device name suggests it's a scanner, accept it even without keyboard source
+        if (isLikelyScanner && !device.isVirtual) {
+            return true
+        }
 
-        return isLikelyScanner || isExternalKeyboard
+        // For keyboard devices, check if it's an external physical keyboard
+        if (hasKeyboard) {
+            // Accept any non-virtual keyboard device
+            // This catches USB/Bluetooth keyboards which is how scanners typically appear
+            val keyCharMap = device.keyCharacterMap
+
+            // Exclude only the built-in virtual keyboard
+            if (keyCharMap.keyboardType == KeyCharacterMap.VIRTUAL_KEYBOARD) {
+                return false
+            }
+
+            // Accept if it has a physical keyboard type or has vendor/product IDs (USB device)
+            val hasUsbIds = device.vendorId != 0 || device.productId != 0
+            val isPhysicalKeyboard = device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE
+
+            return hasUsbIds || isPhysicalKeyboard
+        }
+
+        return false
     }
 
     /**
