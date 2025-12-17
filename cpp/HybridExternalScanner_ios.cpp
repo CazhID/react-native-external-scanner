@@ -5,7 +5,8 @@ namespace margelo::nitro::externalscanner {
 std::shared_ptr<HybridExternalScannerIOS> HybridExternalScannerIOS::_instance = nullptr;
 std::mutex HybridExternalScannerIOS::_instanceMutex;
 
-HybridExternalScannerIOS::HybridExternalScannerIOS() : HybridExternalScanner() {
+HybridExternalScannerIOS::HybridExternalScannerIOS()
+    : HybridObject(TAG), HybridExternalScanner() {
 }
 
 HybridExternalScannerIOS::~HybridExternalScannerIOS() {

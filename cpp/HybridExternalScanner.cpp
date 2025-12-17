@@ -3,7 +3,8 @@
 
 namespace margelo::nitro::externalscanner {
 
-HybridExternalScanner::HybridExternalScanner() : HybridObject(TAG) {
+HybridExternalScanner::HybridExternalScanner()
+    : HybridObject(TAG), HybridExternalScannerSpec() {
     _lastKeyTime = std::chrono::steady_clock::now();
 }
 

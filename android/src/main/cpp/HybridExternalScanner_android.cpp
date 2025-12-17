@@ -17,7 +17,8 @@ jmethodID HybridExternalScannerAndroid::_getConnectedDevicesMethod = nullptr;
 jmethodID HybridExternalScannerAndroid::_startInterceptingMethod = nullptr;
 jmethodID HybridExternalScannerAndroid::_stopInterceptingMethod = nullptr;
 
-HybridExternalScannerAndroid::HybridExternalScannerAndroid() : HybridExternalScanner() {
+HybridExternalScannerAndroid::HybridExternalScannerAndroid()
+    : HybridObject(TAG), HybridExternalScanner() {
     LOGD("HybridExternalScannerAndroid created");
 }
 
