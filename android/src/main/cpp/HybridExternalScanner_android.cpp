@@ -78,6 +78,11 @@ JNIEnv* HybridExternalScannerAndroid::getJNIEnv() {
         return nullptr;
     }
 
+    // Initialize JNI references if not already done
+    if (env != nullptr && _scannerUtilClass == nullptr) {
+        initJNI(env);
+    }
+
     return env;
 }
 
@@ -101,14 +106,20 @@ void HybridExternalScannerAndroid::startScanning(
     const std::function<void(const ScanResult&)>& onScan,
     const std::optional<std::function<void(const std::string&, double)>>& onChar
 ) {
+    LOGD("startScanning() called");
     HybridExternalScanner::startScanning(onScan, onChar);
 
     JNIEnv* env = getJNIEnv();
     if (env != nullptr && _scannerUtilClass != nullptr && _startInterceptingMethod != nullptr) {
+        LOGD("Calling ExternalScannerUtil.startIntercepting()");
         env->CallStaticVoidMethod(_scannerUtilClass, _startInterceptingMethod);
+        LOGD("ExternalScannerUtil.startIntercepting() called successfully");
+    } else {
+        LOGE("Failed to call startIntercepting: env=%p, class=%p, method=%p",
+             env, _scannerUtilClass, _startInterceptingMethod);
     }
 
-    LOGD("Started scanning");
+    LOGD("Started scanning, isScanning=%d", isScanning() ? 1 : 0);
 }
 
 void HybridExternalScannerAndroid::stopScanning() {

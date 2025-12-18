@@ -104,19 +104,24 @@ export function useExternalScanner(
     onCharRef.current?.(char, keyCode)
   }, [])
 
+  // Use ref to track scanning state to avoid stale closures
+  const scanningRef = useRef(false)
+
   const start = useCallback(() => {
-    if (scanning) return
+    if (scanningRef.current) return
     setScanTimeout(scanTimeout)
     setMinScanLength(minScanLength)
     startScanning(handleScan, handleChar)
+    scanningRef.current = true
     setScanning(true)
-  }, [scanning, scanTimeout, minScanLength, handleScan, handleChar])
+  }, [scanTimeout, minScanLength, handleScan, handleChar])
 
   const stop = useCallback(() => {
-    if (!scanning) return
+    if (!scanningRef.current) return
     stopScanning()
+    scanningRef.current = false
     setScanning(false)
-  }, [scanning])
+  }, [])
 
   // Setup connection listener
   useEffect(() => {
@@ -130,10 +135,18 @@ export function useExternalScanner(
   // Auto-start scanning
   useEffect(() => {
     if (autoStart) {
-      start()
+      // Direct call to native to avoid any stale closure issues
+      setScanTimeout(scanTimeout)
+      setMinScanLength(minScanLength)
+      startScanning(handleScan, handleChar)
+      scanningRef.current = true
+      setScanning(true)
     }
     return () => {
-      stop()
+      if (scanningRef.current) {
+        stopScanning()
+        scanningRef.current = false
+      }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
