@@ -183,21 +183,20 @@ using namespace margelo::nitro::externalscanner;
     }
 
     // Special characters
-    switch (keyCode) {
-        case GCKeyCodeHyphen: return @"-";
-        case GCKeyCodeEqualSign: return @"=";
-        case GCKeyCodeOpenBracket: return @"[";
-        case GCKeyCodeCloseBracket: return @"]";
-        case GCKeyCodeBackslash: return @"\\";
-        case GCKeyCodeSemicolon: return @";";
-        case GCKeyCodeQuote: return @"'";
-        case GCKeyCodeGraveAccentAndTilde: return @"`";
-        case GCKeyCodeComma: return @",";
-        case GCKeyCodePeriod: return @".";
-        case GCKeyCodeSlash: return @"/";
-        case GCKeyCodeSpacebar: return @" ";
-        default: return nil;
-    }
+    if (keyCode == GCKeyCodeHyphen) return @"-";
+    if (keyCode == GCKeyCodeEqualSign) return @"=";
+    if (keyCode == GCKeyCodeOpenBracket) return @"[";
+    if (keyCode == GCKeyCodeCloseBracket) return @"]";
+    if (keyCode == GCKeyCodeBackslash) return @"\\";
+    if (keyCode == GCKeyCodeSemicolon) return @";";
+    if (keyCode == GCKeyCodeQuote) return @"'";
+    if (keyCode == GCKeyCodeGraveAccentAndTilde) return @"`";
+    if (keyCode == GCKeyCodeComma) return @",";
+    if (keyCode == GCKeyCodePeriod) return @".";
+    if (keyCode == GCKeyCodeSlash) return @"/";
+    if (keyCode == GCKeyCodeSpacebar) return @" ";
+
+    return nil;
 }
 
 - (BOOL)hasExternalScanner {
