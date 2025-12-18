@@ -132,7 +132,7 @@ using namespace margelo::nitro::externalscanner;
     // Setup keyboard input handler
     GCKeyboard *keyboard = [GCKeyboard coalescedKeyboard];
     if (keyboard && keyboard.keyboardInput) {
-        __weak typeof(self) weakSelf = self;
+        __weak __typeof__(self) weakSelf = self;
         keyboard.keyboardInput.keyChangedHandler = ^(GCKeyboardInput * _Nonnull keyboard,
                                                      GCControllerButtonInput * _Nonnull key,
                                                      GCKeyCode keyCode,
