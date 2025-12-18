@@ -130,6 +130,7 @@ object ExternalScannerUtil {
      */
     @JvmStatic
     fun startIntercepting() {
+        Log.d(TAG, "startIntercepting() called")
         isIntercepting = true
         syncDevices()
     }
@@ -139,6 +140,7 @@ object ExternalScannerUtil {
      */
     @JvmStatic
     fun stopIntercepting() {
+        Log.d(TAG, "stopIntercepting() called")
         isIntercepting = false
     }
 
@@ -155,13 +157,22 @@ object ExternalScannerUtil {
      */
     @JvmStatic
     fun processKeyEvent(event: KeyEvent): Boolean {
-        if (!isIntercepting) return false
-
         val deviceId = event.deviceId
         if (deviceId < 0) return false
 
-        // Check if this is from an external device
+        // Check if this is from an external scanner device
         if (!isExternalScanner(deviceId)) return false
+
+        // Log for debugging
+        Log.d(TAG, "processKeyEvent: keyCode=${event.keyCode}, action=${event.action}, " +
+                "deviceId=$deviceId, isIntercepting=$isIntercepting")
+
+        // If not intercepting, still check but don't consume
+        // This allows the event to pass through when scanning is not active
+        if (!isIntercepting) {
+            Log.d(TAG, "Not intercepting - call startScanning() first")
+            return false
+        }
 
         // Get the character for this key event
         val unicodeChar = event.unicodeChar
@@ -170,6 +181,8 @@ object ExternalScannerUtil {
         } else {
             ""
         }
+
+        Log.d(TAG, "Sending to native: char='$characters', keyCode=${event.keyCode}")
 
         // Send to native
         ExternalScannerJNI.sendKeyEvent(
@@ -200,16 +213,45 @@ object ExternalScannerUtil {
         // Virtual devices are not external scanners
         if (device.isVirtual) return false
 
-        // Must have keyboard source
+        val nameLower = device.name.lowercase()
+
+        // Exclude known internal/system devices
+        val isInternalDevice = nameLower.contains("mtk-") ||      // MediaTek internal
+                nameLower.contains("pmic") ||                      // Power management
+                nameLower.contains("_ts") ||                       // Touchscreen
+                nameLower.contains("touchscreen") ||
+                nameLower.contains("touch screen") ||
+                nameLower.contains("headset") ||                   // Audio jack
+                nameLower.contains("headphone") ||
+                nameLower.contains("gpio") ||                      // GPIO keys
+                nameLower.contains("power") ||                     // Power button
+                nameLower.contains("volume") ||                    // Volume buttons
+                nameLower.contains("fingerprint") ||               // Fingerprint sensor
+                nameLower.contains("accelerometer") ||             // Sensors
+                nameLower.contains("gyroscope") ||
+                nameLower.contains("compass") ||
+                nameLower.contains("proximity") ||
+                nameLower.contains("light sensor") ||
+                nameLower.startsWith("gpio-") ||
+                nameLower.startsWith("kpd") ||                     // Keypad (internal)
+                nameLower.endsWith("-kpd") ||
+                nameLower.contains(",pen")                         // Stylus pen
+
+        if (isInternalDevice) {
+            return false
+        }
+
+        // Must have keyboard source for scanner input
         val sources = device.sources
         val hasKeyboard = (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
 
-        // Check device name for common scanner identifiers
-        val nameLower = device.name.lowercase()
+        if (!hasKeyboard) return false
+
+        // Check device name for common scanner/RFID identifiers
         val isLikelyScanner = nameLower.contains("scanner") ||
                 nameLower.contains("barcode") ||
                 nameLower.contains("reader") ||
-                nameLower.contains("hid") ||
+                nameLower.contains("rfid") ||
                 nameLower.contains("symbol") ||
                 nameLower.contains("honeywell") ||
                 nameLower.contains("zebra") ||
@@ -217,32 +259,20 @@ object ExternalScannerUtil {
                 nameLower.contains("newland") ||
                 nameLower.contains("opticon") ||
                 nameLower.contains("motorola") ||
-                nameLower.contains("usb") // Many scanners show as generic USB device
+                nameLower.contains("intermec") ||
+                nameLower.contains("denso") ||
+                nameLower.contains("keyence")
 
-        // If device name suggests it's a scanner, accept it even without keyboard source
-        if (isLikelyScanner && !device.isVirtual) {
+        // If it looks like a scanner, accept it
+        if (isLikelyScanner) {
             return true
         }
 
-        // For keyboard devices, check if it's an external physical keyboard
-        if (hasKeyboard) {
-            // Accept any non-virtual keyboard device
-            // This catches USB/Bluetooth keyboards which is how scanners typically appear
-            val keyCharMap = device.keyCharacterMap
+        // For other keyboard devices, require USB vendor/product IDs
+        // This filters out built-in keyboards that don't have USB IDs
+        val hasUsbIds = device.vendorId > 0 && device.productId > 0
 
-            // Exclude only the built-in virtual keyboard
-            if (keyCharMap.keyboardType == KeyCharacterMap.VIRTUAL_KEYBOARD) {
-                return false
-            }
-
-            // Accept if it has a physical keyboard type or has vendor/product IDs (USB device)
-            val hasUsbIds = device.vendorId != 0 || device.productId != 0
-            val isPhysicalKeyboard = device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE
-
-            return hasUsbIds || isPhysicalKeyboard
-        }
-
-        return false
+        return hasUsbIds
     }
 
     /**
