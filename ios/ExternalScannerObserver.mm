@@ -5,67 +5,10 @@
 
 using namespace margelo::nitro::externalscanner;
 
-// Hidden text field for capturing scanner input
-@interface ScannerTextField : UITextField <UITextFieldDelegate>
-@property (nonatomic, weak) ExternalScannerObserver *observer;
-@end
-
-@implementation ScannerTextField
-
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        self.delegate = self;
-        self.autocorrectionType = UITextAutocorrectionTypeNo;
-        self.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        self.spellCheckingType = UITextSpellCheckingTypeNo;
-        self.keyboardType = UIKeyboardTypeASCIICapable;
-        self.returnKeyType = UIReturnKeyDone;
-        // Make invisible but still functional
-        self.frame = CGRectMake(-1000, -1000, 1, 1);
-        self.alpha = 0.01;
-    }
-    return self;
-}
-
-- (BOOL)canBecomeFirstResponder {
-    return YES;
-}
-
-// Prevent the keyboard from showing
-- (UIView *)inputView {
-    return [[UIView alloc] initWithFrame:CGRectZero];
-}
-
-// Prevent the accessory view from showing
-- (UIView *)inputAccessoryView {
-    return nil;
-}
-
-- (BOOL)textField:(UITextField *)textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string {
-    if (self.observer) {
-        [self.observer handleTextInput:string];
-    }
-    return YES;
-}
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    if (self.observer) {
-        [self.observer handleEnterKey];
-    }
-    // Clear after processing
-    textField.text = @"";
-    return NO;
-}
-
-@end
-
 @interface ExternalScannerObserver ()
 
 @property (nonatomic, assign) BOOL isMonitoring;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *connectedDevices;
-@property (nonatomic, strong) ScannerTextField *hiddenTextField;
-@property (nonatomic, strong) NSTimer *focusTimer;
 
 @end
 
@@ -92,7 +35,7 @@ using namespace margelo::nitro::externalscanner;
 }
 
 - (void)setupNotifications {
-    // Monitor keyboard connection/disconnection
+    // Monitor keyboard connection/disconnection via GameController
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardDidConnect:)
                                                  name:GCKeyboardDidConnectNotification
@@ -101,23 +44,6 @@ using namespace margelo::nitro::externalscanner;
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardDidDisconnect:)
                                                  name:GCKeyboardDidDisconnectNotification
-                                               object:nil];
-
-    // Also monitor for generic HID devices
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(controllerDidConnect:)
-                                                 name:GCControllerDidConnectNotification
-                                               object:nil];
-
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(controllerDidDisconnect:)
-                                                 name:GCControllerDidDisconnectNotification
-                                               object:nil];
-
-    // Monitor for external keyboard notifications
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(externalKeyboardDidConnect:)
-                                                 name:UIKeyboardDidShowNotification
                                                object:nil];
 }
 
@@ -134,20 +60,6 @@ using namespace margelo::nitro::externalscanner;
             @"productId": @(0),
             @"isExternal": @YES
         }];
-    }
-
-    // Check for any connected controllers that might be scanners
-    for (GCController *controller in [GCController controllers]) {
-        if (controller.extendedGamepad == nil && controller.microGamepad == nil) {
-            // Not a game controller, might be a scanner
-            [self.connectedDevices addObject:@{
-                @"id": @(controller.playerIndex + 100),
-                @"name": controller.vendorName ?: @"Unknown Device",
-                @"vendorId": @(0),
-                @"productId": @(0),
-                @"isExternal": @(controller.isAttachedToDevice == NO)
-            }];
-        }
     }
 
     [self syncDevicesToCpp];
@@ -180,56 +92,12 @@ using namespace margelo::nitro::externalscanner;
     [self checkConnectedDevices];
 }
 
-- (void)controllerDidConnect:(NSNotification *)notification {
-    [self checkConnectedDevices];
-}
-
-- (void)controllerDidDisconnect:(NSNotification *)notification {
-    [self checkConnectedDevices];
-}
-
-- (void)externalKeyboardDidConnect:(NSNotification *)notification {
-    [self checkConnectedDevices];
-}
-
 - (void)startMonitoring {
     if (self.isMonitoring) return;
     self.isMonitoring = YES;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // Create hidden text field if needed
-        if (!self.hiddenTextField) {
-            self.hiddenTextField = [[ScannerTextField alloc] init];
-            self.hiddenTextField.observer = self;
-        }
-
-        // Add to key window
-        UIWindow *keyWindow = [self getKeyWindow];
-        if (keyWindow) {
-            [keyWindow addSubview:self.hiddenTextField];
-            [self.hiddenTextField becomeFirstResponder];
-        }
-
-        // Setup GCKeyboard handler as backup
-        [self setupGCKeyboardHandler];
-
-        // Start timer to maintain focus
-        [self startFocusTimer];
-    });
-}
-
-- (UIWindow *)getKeyWindow {
-    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            UIWindowScene *windowScene = (UIWindowScene *)scene;
-            for (UIWindow *window in windowScene.windows) {
-                if (window.isKeyWindow) {
-                    return window;
-                }
-            }
-        }
-    }
-    return nil;
+    // Setup GCKeyboard handler for key input
+    [self setupGCKeyboardHandler];
 }
 
 - (void)setupGCKeyboardHandler {
@@ -245,39 +113,8 @@ using namespace margelo::nitro::externalscanner;
     }
 }
 
-- (void)startFocusTimer {
-    [self.focusTimer invalidate];
-    __weak __typeof__(self) weakSelf = self;
-    self.focusTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
-                                                      repeats:YES
-                                                        block:^(NSTimer * _Nonnull timer) {
-        [weakSelf maintainFocus];
-    }];
-}
-
-- (void)maintainFocus {
-    if (!self.isMonitoring) return;
-
-    auto instance = HybridExternalScannerIOS::getInstance();
-    if (!instance || !instance->isScanning()) return;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.hiddenTextField && ![self.hiddenTextField isFirstResponder]) {
-            [self.hiddenTextField becomeFirstResponder];
-        }
-    });
-}
-
 - (void)stopMonitoring {
     self.isMonitoring = NO;
-
-    [self.focusTimer invalidate];
-    self.focusTimer = nil;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.hiddenTextField resignFirstResponder];
-        [self.hiddenTextField removeFromSuperview];
-    });
 
     GCKeyboard *keyboard = [GCKeyboard coalescedKeyboard];
     if (keyboard && keyboard.keyboardInput) {
@@ -295,11 +132,10 @@ using namespace margelo::nitro::externalscanner;
         unichar c = [text characterAtIndex:i];
         NSString *charStr = [NSString stringWithCharacters:&c length:1];
 
-        // Use a generic key code for text input (actual character is what matters)
         instance->handleKeyInput(
             std::string([charStr UTF8String]),
-            0, // Key code not available via text input
-            true // isKeyDown
+            0,
+            true
         );
     }
 }
@@ -312,11 +148,6 @@ using namespace margelo::nitro::externalscanner;
 
     // Send enter key (key code 40 = GCKeyCodeReturnOrEnter)
     instance->handleKeyInput("", 40, true);
-
-    // Clear the text field
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.hiddenTextField.text = @"";
-    });
 }
 
 - (void)handleKeyCode:(GCKeyCode)keyCode pressed:(BOOL)pressed {
@@ -337,8 +168,12 @@ using namespace margelo::nitro::externalscanner;
 }
 
 - (NSString *)characterForKeyCode:(GCKeyCode)keyCode {
-    // Map common key codes to characters
-    // Numbers 0-9 (GCKeyCode starts at 0x1E for '1' and 0x27 for '0')
+    // Check for Enter/Return keys first
+    if (keyCode == GCKeyCodeReturnOrEnter || keyCode == GCKeyCodeKeypadEnter) {
+        return nil; // Return nil so it triggers buffer processing via empty string + enter keycode
+    }
+
+    // Numbers 0-9
     if (keyCode >= GCKeyCodeOne && keyCode <= GCKeyCodeNine) {
         return [NSString stringWithFormat:@"%c", (char)('1' + (keyCode - GCKeyCodeOne))];
     }
@@ -346,7 +181,7 @@ using namespace margelo::nitro::externalscanner;
         return @"0";
     }
 
-    // Letters A-Z (GCKeyCode starts at 0x04 for 'A')
+    // Letters A-Z
     if (keyCode >= GCKeyCodeKeyA && keyCode <= GCKeyCodeKeyZ) {
         return [NSString stringWithFormat:@"%c", (char)('A' + (keyCode - GCKeyCodeKeyA))];
     }

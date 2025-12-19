@@ -148,8 +148,8 @@ void HybridExternalScanner::clearBuffer() {
 
 bool HybridExternalScanner::isEnterKey(int keyCode) {
     // Android: KEYCODE_ENTER = 66, KEYCODE_NUMPAD_ENTER = 160
-    // iOS: UIKeyboardHIDUsageKeyboardReturnOrEnter = 0x28 (40)
-    return keyCode == 66 || keyCode == 160 || keyCode == 40 || keyCode == 0x28;
+    // iOS GCKeyCode: ReturnOrEnter = 0x28 (40), KeypadEnter = 0x58 (88)
+    return keyCode == 66 || keyCode == 160 || keyCode == 40 || keyCode == 88;
 }
 
 std::string HybridExternalScanner::keyCodeToChar(int keyCode, bool shiftPressed) {
