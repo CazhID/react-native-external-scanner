@@ -24,6 +24,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Get list of connected external devices as JSON
 - (NSString *)getConnectedDevicesJson;
 
+/// Handle text input from hidden text field (internal use)
+- (void)handleTextInput:(NSString *)text;
+
+/// Handle enter key press (internal use)
+- (void)handleEnterKey;
+
 @end
 
 NS_ASSUME_NONNULL_END
