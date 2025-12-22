@@ -174,24 +174,72 @@ void HybridExternalScannerAndroid::setDevicesFromJava(JNIEnv* env, jobjectArray 
         instance->_connectedDevices.clear();
     }
 
+    if (devices == nullptr) {
+        LOGD("setDevicesFromJava: devices array is null");
+        return;
+    }
+
     // Get array length
     jsize length = env->GetArrayLength(devices);
+    LOGD("setDevicesFromJava: processing %d devices", length);
+
+    if (length == 0) {
+        return;
+    }
 
     // Get the DeviceInfoJava class and its fields
     jclass deviceClass = env->FindClass("com/margelo/nitro/externalscanner/DeviceInfoJava");
     if (deviceClass == nullptr) {
         LOGE("Failed to find DeviceInfoJava class");
+        env->ExceptionClear();
         return;
     }
 
     jfieldID idField = env->GetFieldID(deviceClass, "id", "I");
+    if (env->ExceptionCheck() || idField == nullptr) {
+        LOGE("Failed to find 'id' field - ProGuard may have obfuscated it. Add keep rules!");
+        env->ExceptionClear();
+        env->DeleteLocalRef(deviceClass);
+        return;
+    }
+
     jfieldID nameField = env->GetFieldID(deviceClass, "name", "Ljava/lang/String;");
+    if (env->ExceptionCheck() || nameField == nullptr) {
+        LOGE("Failed to find 'name' field");
+        env->ExceptionClear();
+        env->DeleteLocalRef(deviceClass);
+        return;
+    }
+
     jfieldID vendorIdField = env->GetFieldID(deviceClass, "vendorId", "I");
+    if (env->ExceptionCheck() || vendorIdField == nullptr) {
+        LOGE("Failed to find 'vendorId' field");
+        env->ExceptionClear();
+        env->DeleteLocalRef(deviceClass);
+        return;
+    }
+
     jfieldID productIdField = env->GetFieldID(deviceClass, "productId", "I");
+    if (env->ExceptionCheck() || productIdField == nullptr) {
+        LOGE("Failed to find 'productId' field");
+        env->ExceptionClear();
+        env->DeleteLocalRef(deviceClass);
+        return;
+    }
+
     jfieldID isExternalField = env->GetFieldID(deviceClass, "isExternal", "Z");
+    if (env->ExceptionCheck() || isExternalField == nullptr) {
+        LOGE("Failed to find 'isExternal' field");
+        env->ExceptionClear();
+        env->DeleteLocalRef(deviceClass);
+        return;
+    }
 
     for (jsize i = 0; i < length; i++) {
         jobject deviceObj = env->GetObjectArrayElement(devices, i);
+        if (deviceObj == nullptr) {
+            continue;
+        }
 
         jint id = env->GetIntField(deviceObj, idField);
         jstring nameJStr = (jstring)env->GetObjectField(deviceObj, nameField);
@@ -199,11 +247,18 @@ void HybridExternalScannerAndroid::setDevicesFromJava(JNIEnv* env, jobjectArray 
         jint productId = env->GetIntField(deviceObj, productIdField);
         jboolean isExternal = env->GetBooleanField(deviceObj, isExternalField);
 
-        const char* nameChars = env->GetStringUTFChars(nameJStr, nullptr);
-        std::string nameStr(nameChars);
-        env->ReleaseStringUTFChars(nameJStr, nameChars);
+        std::string nameStr;
+        if (nameJStr != nullptr) {
+            const char* nameChars = env->GetStringUTFChars(nameJStr, nullptr);
+            if (nameChars != nullptr) {
+                nameStr = std::string(nameChars);
+                env->ReleaseStringUTFChars(nameJStr, nameChars);
+            }
+            env->DeleteLocalRef(nameJStr);
+        }
 
         DeviceInfo device(static_cast<double>(id), nameStr, static_cast<double>(vendorId), static_cast<double>(productId), isExternal);
+        LOGD("setDevicesFromJava: added device id=%d name=%s", id, nameStr.c_str());
 
         {
             std::lock_guard<std::mutex> lock(instance->_devicesMutex);
@@ -211,10 +266,10 @@ void HybridExternalScannerAndroid::setDevicesFromJava(JNIEnv* env, jobjectArray 
         }
 
         env->DeleteLocalRef(deviceObj);
-        env->DeleteLocalRef(nameJStr);
     }
 
     env->DeleteLocalRef(deviceClass);
+    LOGD("setDevicesFromJava: done, total devices=%zu", instance->_connectedDevices.size());
 }
 
 } // namespace margelo::nitro::externalscanner
